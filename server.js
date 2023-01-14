@@ -1,3 +1,6 @@
+const bcrypt = require("bcrypt");
+
+const someOtherPlaintextPassword = "not_bacon";
 const express = require("express");
 const path = require("path");
 const app = express();
@@ -32,12 +35,16 @@ MongoClient.connect(process.env.DB_URL, function (err, client) {
 });
 
 app.post("/signin", function (req, res) {
-  db.collection("login").insertOne(
-    { id: req.body.id, pw: req.body.pw },
-    function (err, result) {
-      console.log("저장완료");
-    }
-  );
+  const myPlaintextPassword = req.body.pw;
+  const saltRounds = 10;
+  bcrypt.hash(myPlaintextPassword, saltRounds, function (err, hash) {
+    db.collection("login").insertOne(
+      { id: req.body.id, pw: hash },
+      function (err, result) {
+        console.log("저장완료");
+      }
+    );
+  });
   res.send("전송완료");
 });
 
@@ -59,17 +66,25 @@ passport.use(
       passReqToCallback: false,
     },
     function (inputId, inputPw, done) {
-      //console.log(inputId, inputPw);
-      db.collection("login").findOne({ id: inputId }, function (err, result) {
-        if (err) return done(err);
-        if (!result)
-          return done(null, false, { message: "존재하지않는 아이디입니다" });
-        if (inputPw == result.pw) {
-          return done(null, result);
-        } else {
-          return done(null, false, { message: "비번이 틀렸습니다" });
+      db.collection("login").findOne(
+        { id: inputId },
+        function (err, logresult) {
+          if (err) return done(err);
+          if (!logresult)
+            return done(null, false, { message: "존재하지않는 아이디입니다" });
+          bcrypt.compare(inputPw, logresult.pw, function (err, result) {
+            if (result == true) return done(null, logresult);
+            else return done(null, false, { message: "비번이 틀렸습니다" });
+          });
+          // if (inputPw == result.pw) {
+          //   return done(null, result);
+          // } else {
+          //   return done(null, false, { message: "비번이 틀렸습니다" });
+          // }
         }
-      });
+      );
+
+      //console.log(inputId, inputPw);
     }
   )
 );
