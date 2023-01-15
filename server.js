@@ -1,12 +1,11 @@
 const bcrypt = require("bcrypt");
-
-const someOtherPlaintextPassword = "not_bacon";
 const express = require("express");
 const path = require("path");
 const app = express();
 const passport = require("passport");
-const LocalStrategy = require("passport-local").Strategy;
 const session = require("express-session");
+const LocalStrategy = require("passport-local").Strategy;
+
 require("dotenv").config();
 app.use(express.urlencoded({ extended: true }));
 const MongoClient = require("mongodb").MongoClient;
@@ -25,7 +24,7 @@ app.use(passport.session());
 // app.get("/", function (req, res) {
 //   res.sendFile(path.join(__dirname, "/react-project/build/index.html"));
 // });
-
+var db;
 MongoClient.connect(process.env.DB_URL, function (err, client) {
   if (err) return console.log(err);
   db = client.db("shop");
@@ -57,6 +56,19 @@ app.post(
   }
 );
 
+app.get("/cklogin", ckLogIn, function (req, res) {
+  console.log(req.user);
+  res.send({ user: req.user });
+});
+
+function ckLogIn(req, res, next) {
+  if (req.user) {
+    next();
+  } else {
+    res.send("로그인안하셨는데요?");
+  }
+}
+
 passport.use(
   new LocalStrategy(
     {
@@ -65,38 +77,35 @@ passport.use(
       session: true,
       passReqToCallback: false,
     },
-    function (inputId, inputPw, done) {
-      db.collection("login").findOne(
-        { id: inputId },
-        function (err, logresult) {
-          if (err) return done(err);
-          if (!logresult)
-            return done(null, false, { message: "존재하지않는 아이디입니다" });
-          bcrypt.compare(inputPw, logresult.pw, function (err, result) {
-            if (result == true) return done(null, logresult);
-            else return done(null, false, { message: "비번이 틀렸습니다" });
-          });
-          // if (inputPw == result.pw) {
-          //   return done(null, result);
-          // } else {
-          //   return done(null, false, { message: "비번이 틀렸습니다" });
-          // }
+    async function (userId, password, done) {
+      try {
+        const user = await db.collection("login").findOne({ id: userId });
+        if (!user) {
+          return done(null, false, { reason: "존재하지않는 아이디입니다" });
         }
-      );
-
-      //console.log(inputId, inputPw);
+        const result = await bcrypt.compare(password, user.pw);
+        if (result) {
+          return done(null, user);
+        }
+        return done(null, false, { reason: "비밀번호가 틀립니다." });
+      } catch (e) {
+        console.log(e);
+        return done(e);
+      }
     }
   )
 );
 
 passport.serializeUser(function (user, done) {
-  done(null, user.id);
+  done(null, user);
 });
 
-passport.deserializeUser(function (id, done) {
-  done(null, {});
+passport.deserializeUser(async function (inputid, done) {
+  db.collection("login").findOne({ id: inputid.id }, function (err, result) {
+    console.log(result);
+    done(null, result);
+  });
 });
-
 // app.get("*", function (req, res) {
 //   res.sendFile(path.join(__dirname, "/react-project/build/index.html"));
 // });
